@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Kondaas — IT Helpdesk Dashboard</title>
+
+<!-- MSAL.js for Microsoft 365 Login -->
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --red:      #E8241A;
+    --red-dark: #B71C18;
+    --red-soft: #fdecea;
+    --white:    #ffffff;
+    --gray-bg:  #f4f5f7;
+    --gray-1:   #f0f0f0;
+    --gray-2:   #e0e0e0;
+    --text-1:   #1a1a1a;
+    --text-2:   #555;
+    --text-3:   #888;
+    --green:    #1e8449;
+    --green-bg: #eafaf1;
+    --blue:     #1a5276;
+    --blue-bg:  #eaf4fb;
+    --orange:   #e67e22;
+    --orange-bg:#fff3e0;
+    --purple:   #6c3483;
+    --purple-bg:#f5eef8;
+  }
+
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-bg); color: var(--text-1); min-height: 100vh; }
+
+  /* ── LOGIN SCREEN ── */
+  #loginScreen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #fff 60%, #fdecea 100%);
+  }
+  .login-card {
+    background: #fff; border-radius: 16px; padding: 48px 40px; text-align: center;
+    box-shadow: 0 4px 32px rgba(232,36,26,0.10); max-width: 380px; width: 90%;
+    border-top: 5px solid var(--red);
+  }
+  .login-logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 28px; }
+  .login-k { width: 48px; height: 48px; background: var(--red); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 900; color: #fff; font-style: italic; }
+  .login-brand { font-size: 26px; font-weight: 800; color: var(--red); letter-spacing: 1px; }
+  .login-title { font-size: 17px; font-weight: 700; color: var(--text-1); margin-bottom: 6px; }
+  .login-sub { font-size: 13px; color: var(--text-3); margin-bottom: 32px; line-height: 1.5; }
+  .login-btn {
+    width: 100%; padding: 13px 20px; background: var(--red); color: #fff;
+    border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px; transition: background 0.2s;
+  }
+  .login-btn:hover { background: var(--red-dark); }
+  .login-btn svg { width: 20px; height: 20px; }
+  .login-note { font-size: 11px; color: var(--text-3); margin-top: 16px; }
+
+  /* ── DASHBOARD ── */
+  #dashboard { display: none; }
+
+  header {
+    background: #fff; border-bottom: 3px solid var(--red);
+    padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+    height: 58px; position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .hd-left { display: flex; align-items: center; gap: 12px; }
+  .hd-k { width: 36px; height: 36px; background: var(--red); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 900; color: #fff; font-style: italic; }
+  .hd-brand { font-size: 19px; font-weight: 800; color: var(--red); letter-spacing: 1px; }
+  .hd-sub { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+  .hd-right { display: flex; align-items: center; gap: 12px; }
+  .hd-user { font-size: 12px; color: var(--text-2); }
+  .hd-live { background: var(--red); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; letter-spacing: 1px; display: flex; align-items: center; gap: 5px; }
+  .hd-live::before { content: ''; width: 7px; height: 7px; background: #fff; border-radius: 50%; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .hd-refresh { background: none; border: 1.5px solid var(--red); color: var(--red); border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+  .hd-refresh:hover { background: var(--red); color: #fff; }
+  .hd-logout { background: none; border: none; color: var(--text-3); font-size: 12px; cursor: pointer; text-decoration: underline; }
+
+  nav {
+    background: var(--red); display: flex; gap: 0;
+    padding: 0 24px; overflow-x: auto;
+  }
+  .nav-item { padding: 11px 20px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.75); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; transition: all 0.2s; }
+  .nav-item.active, .nav-item:hover { color: #fff; border-bottom-color: #fff; background: rgba(0,0,0,0.12); }
+
+  .page { display: none; padding: 20px 24px; }
+  .page.active { display: block; }
+
+  /* loading */
+  #loadingBar { height: 3px; background: var(--red); width: 0%; transition: width 0.4s; position: fixed; top: 0; left: 0; z-index: 999; }
+  #loadingMsg { text-align: center; padding: 40px; color: var(--text-3); font-size: 14px; display: none; }
+
+  /* ── KPI ROW ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi-card {
+    background: #fff; border-radius: 10px; padding: 16px 18px;
+    border-top: 4px solid var(--red); box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+  .kpi-card.kblue  { border-top-color: #2980B9; }
+  .kpi-card.kgreen { border-top-color: #27AE60; }
+  .kpi-card.kgray  { border-top-color: #7F8C8D; }
+  .kpi-card.korange{ border-top-color: var(--orange); }
+  .kpi-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 7px; }
+  .kpi-val   { font-size: 32px; font-weight: 800; color: var(--text-1); line-height: 1; }
+  .kpi-sub   { font-size: 11px; color: var(--text-3); margin-top: 6px; }
+  .trend-up  { color: #27AE60; font-weight: 700; }
+  .trend-dn  { color: var(--red); font-weight: 700; }
+
+  /* ── GRID ── */
+  .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .grid-3   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .grid-2   { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+
+  /* ── CARD ── */
+  .card {
+    background: #fff; border-radius: 10px; padding: 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+  .card-title {
+    font-size: 13px; font-weight: 700; color: var(--text-1); margin-bottom: 14px;
+    padding-left: 10px; border-left: 3px solid var(--red); display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title span { font-size: 11px; color: var(--text-3); font-weight: 400; border: none; padding: 0; }
+
+  /* ── FILTERS ── */
+  .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .filter-bar select, .filter-bar input {
+    border: 1.5px solid var(--gray-2); border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; color: var(--text-1); background: #fff; outline: none;
+  }
+  .filter-bar select:focus, .filter-bar input:focus { border-color: var(--red); }
+  .filter-btn { background: var(--red); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+  /* ── TABLE ── */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th { background: #fafafa; color: var(--text-3); font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--gray-1); font-size: 11px; text-transform: uppercase; white-space: nowrap; }
+  tbody td { padding: 9px 10px; border-bottom: 1px solid var(--gray-1); color: var(--text-1); vertical-align: middle; }
+  tbody tr:hover td { background: #fff5f5; }
+  .tid { color: var(--red); font-family: monospace; font-weight: 700; font-size: 11px; }
+
+  /* ── PILLS ── */
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .p-open     { background: #eaf4fb; color: #1a5276; }
+  .p-closed   { background: #eafaf1; color: #1e8449; }
+  .p-progress { background: #fff3e0; color: #e67e22; }
+  .p-pending  { background: #f5eef8; color: #6c3483; }
+  .p-default  { background: var(--gray-1); color: var(--text-2); }
+  .p-hardware { background: #fdecea; color: #c0392b; }
+  .p-software { background: #eaf4fb; color: #1a5276; }
+
+  /* ── BAR MINI ── */
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .bar-lbl { width: 100px; font-size: 11px; color: var(--text-3); text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-bg  { flex: 1; height: 8px; background: var(--gray-1); border-radius: 4px; overflow: hidden; }
+  .bar-fill{ height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+  .bar-num { width: 32px; text-align: right; font-size: 12px; font-weight: 700; color: var(--text-1); }
+
+  /* ── LEGEND ── */
+  .legend { margin-top: 10px; }
+  .leg-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+  .leg-dot  { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .leg-lbl  { flex: 1; color: var(--text-3); }
+  .leg-val  { font-weight: 700; color: var(--text-1); }
+  .leg-pct  { font-size: 11px; color: var(--text-3); margin-left: 3px; }
+
+  /* ── STAR RATING ── */
+  .stars { color: #f39c12; letter-spacing: 1px; font-size: 13px; }
+  .no-rating { color: var(--text-3); font-size: 11px; }
+
+  /* ── AGENT TABLE ── */
+  .agent-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--gray-1); }
+  .av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+  .agent-name { flex: 1; font-size: 12px; font-weight: 500; }
+  .agent-cnt  { font-size: 12px; color: var(--text-3); }
+  .agent-bar-wrap { width: 60px; height: 6px; background: var(--gray-1); border-radius: 3px; overflow: hidden; }
+  .agent-bar { height: 100%; border-radius: 3px; }
+
+  /* ── PAGINATION ── */
+  .pagination { display: flex; gap: 6px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
+  .pg-btn { padding: 5px 10px; border: 1.5px solid var(--gray-2); border-radius: 5px; font-size: 12px; cursor: pointer; background: #fff; color: var(--text-1); }
+  .pg-btn.active { background: var(--red); border-color: var(--red); color: #fff; font-weight: 700; }
+  .pg-btn:hover:not(.active) { border-color: var(--red); color: var(--red); }
+
+  /* error */
+  .error-box { background: #fdecea; border: 1px solid #f5b7b1; border-radius: 8px; padding: 14px 18px; color: #922b21; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  @media(max-width:900px){
+    .kpi-row { grid-template-columns: repeat(2,1fr); }
+    .grid-2-1, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  }
+  @media(max-width:500px){
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    header { padding: 0 12px; }
+    .page { padding: 14px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loadingBar"></div>
+
+<!-- ═══════════════ LOGIN ═══════════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-k">k</div>
+      <div class="login-brand">kondaas</div>
+    </div>
+    <div class="login-title">IT Helpdesk Command Center</div>
+    <div class="login-sub">Sign in with your Kondaas Microsoft 365 account to access live SharePoint ticket data.</div>
+    <button class="login-btn" onclick="signIn()">
+      <svg viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+        <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+      </svg>
+      Sign in with Microsoft
+    </button>
+    <div class="login-note">Uses your existing Microsoft 365 / SharePoint account. No separate password needed.</div>
+  </div>
+</div>
+
+<!-- ═══════════════ DASHBOARD ═══════════════ -->
+<div id="dashboard">
+
+  <header>
+    <div class="hd-left">
+      <div class="hd-k">k</div>
+      <div>
+        <div class="hd-brand">kondaas</div>
+        <div class="hd-sub">IT Helpdesk — Live Dashboard</div>
+      </div>
+    </div>
+    <div class="hd-right">
+      <span class="hd-live">LIVE</span>
+      <span class="hd-user" id="userDisplay"></span>
+      <button class="hd-refresh" onclick="loadData()">↻ Refresh</button>
+      <button class="hd-logout" onclick="signOut()">Sign Out</button>
+    </div>
+  </header>
+
+  <nav>
+    <div class="nav-item active" onclick="showPage('overview',this)">Overview</div>
+    <div class="nav-item" onclick="showPage('tickets',this)">All Tickets</div>
+    <div class="nav-item" onclick="showPage('agents',this)">Agent View</div>
+    <div class="nav-item" onclick="showPage('departments',this)">Departments</div>
+  </nav>
+
+  <div id="errorBox" class="error-box"></div>
+  <div id="loadingMsg">⏳ Loading live data from SharePoint...</div>
+
+  <!-- ══ OVERVIEW PAGE ══ -->
+  <div class="page active" id="page-overview">
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Total Tickets</div><div class="kpi-val" id="kpi-total">—</div><div class="kpi-sub">All time</div></div>
+      <div class="kpi-card kblue"><div class="kpi-label">Open</div><div class="kpi-val" id="kpi-open" style="color:#2980B9">—</div><div class="kpi-sub">Awaiting action</div></div>
+      <div class="kpi-card kgreen"><div class="kpi-label">Closed / Resolved</div><div class="kpi-val" id="kpi-closed" style="color:#27AE60">—</div><div class="kpi-sub">Completed</div></div>
+      <div class="kpi-card korange"><div class="kpi-label">In Progress</div><div class="kpi-val" id="kpi-inprog" style="color:#e67e22">—</div><div class="kpi-sub">Being worked on</div></div>
+    </div>
+
+    <div class="grid-2-1">
+      <div class="card">
+        <div class="card-title">Ticket Volume by Date <span id="dateRangeLabel"></span></div>
+        <div style="position:relative;height:220px;"><canvas id="lineChart" role="img" aria-label="Ticket volume over time">Daily ticket volume.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Status Breakdown</div>
+        <div style="position:relative;height:160px;"><canvas id="statusDonut" role="img" aria-label="Status donut">Status split.</canvas></div>
+        <div class="legend" id="statusLegend"></div>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-title">Mode of Issue</div>
+        <div id="modeBars"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Department Split</div>
+        <div style="position:relative;height:200px;"><canvas id="deptChart" role="img" aria-label="Department chart">Department distribution.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Avg Rating by Agent</div>
+        <div id="ratingBars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TICKETS PAGE ══ -->
+  <div class="page" id="page-tickets">
+    <div class="filter-bar">
+      <select id="f-status"><option value="">All Status</option></select>
+      <select id="f-dept"><option value="">All Departments</option></select>
+      <select id="f-mode"><option value="">All Mode</option></select>
+      <select id="f-agent"><option value="">All Agents</option></select>
+      <input type="text" id="f-search" placeholder="Search ticket / employee..." style="min-width:180px;"/>
+      <button class="filter-btn" onclick="applyFilters()">Filter</button>
+      <button class="filter-btn" style="background:#7f8c8d;" onclick="clearFilters()">Clear</button>
+    </div>
+    <div class="card">
+      <div class="card-title">All Tickets <span id="ticketCount"></span></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th>Ticket ID</th><th>Title</th><th>Employee</th>
+              <th>Department</th><th>Mode</th><th>Issue Type</th><th>Task Owner</th>
+              <th>Status</th><th>Rating</th>
+            </tr>
+          </thead>
+          <tbody id="ticketTable"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- ══ AGENTS PAGE ══ -->
+  <div class="page" id="page-agents">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Tickets per Agent</div>
+        <div id="agentList"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Agent Performance</div>
+        <div style="position:relative;height:280px;"><canvas id="agentChart" role="img" aria-label="Agent performance">Agent ticket counts.</canvas></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Status by Agent</div>
+        <div style="position:relative;height:260px;"><canvas id="agentStatusChart" role="img" aria-label="Status per agent">Agent status breakdown.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Agent Ratings</div>
+        <div id="agentRatingList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ DEPARTMENTS PAGE ══ -->
+  <div class="page" id="page-departments">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Tickets by Department</div>
+        <div style="position:relative;height:280px;"><canvas id="deptBarChart" role="img" aria-label="Department bar">Tickets per department.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Hardware vs Software by Dept</div>
+        <div style="position:relative;height:280px;"><canvas id="hwSwChart" role="img" aria-label="HW vs SW">Hardware vs Software.</canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Department Ticket Table</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Department</th><th>Total</th><th>Open</th><th>Closed</th><th>In Progress</th><th>Hardware</th><th>Software</th><th>Avg Rating</th></tr></thead>
+          <tbody id="deptTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /dashboard -->
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG — Update these if your Azure App Registration changes
+// ═══════════════════════════════════════════════════════
+const TENANT_ID   = "common"; // or your tenant ID
+const CLIENT_ID   = "YOUR_AZURE_APP_CLIENT_ID"; // ← Replace after App Registration
+const SITE_URL    = "https://kondaasautomation.sharepoint.com/sites/ITHELPDESK-KONDAAS2";
+const LIST_NAME   = "Tickets";
+const REDIRECT_URI = window.location.href.split('?')[0];
+
+// MSAL Config
+const msalConfig = {
+  auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}`, redirectUri: REDIRECT_URI },
+  cache: { cacheLocation: "sessionStorage" }
+};
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+const loginRequest = { scopes: ["https://kondaasautomation.sharepoint.com/.default"] };
+
+// ═══════ STATE ═══════
+let allTickets = [];
+let filteredTickets = [];
+let currentPage = 1;
+const PAGE_SIZE = 15;
+let charts = {};
+
+// ═══════ AUTH ═══════
+async function signIn() {
+  try {
+    const resp = await msalInstance.loginPopup(loginRequest);
+    msalInstance.setActiveAccount(resp.account);
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('userDisplay').textContent = resp.account.name || resp.account.username;
+    await loadData();
+  } catch(e) {
+    showError("Login failed: " + e.message);
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+  }
+}
+
+function signOut() {
+  msalInstance.logoutPopup().then(() => {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+  });
+}
+
+async function getToken() {
+  const account = msalInstance.getActiveAccount();
+  if (!account) throw new Error("No active account");
+  const resp = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
+  return resp.accessToken;
+}
+
+// ═══════ LOAD DATA FROM SHAREPOINT ═══════
+async function loadData() {
+  showLoading(true);
+  hideError();
+  try {
+    const token = await getToken();
+    const url = `${SITE_URL}/_api/web/lists/getbytitle('${LIST_NAME}')/items?$top=5000&$select=DATE,TICKET_x0020_ID,Title,EMPLOYEE_x0020_MAIL_x0020_ID,EMAIL_x0020_MESSAGE_x0020_ID,DEPARTMENT,MODE_x0020_OF_x0020_ISSUE,HARDWARE_x0020_ISSUE,SOFTWARE_x0020_ISSUE,ISSUE_x0020_DESCRIPTION,TASK_x0020_OWNER,STATUS,Rating`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json;odata=verbose' }
+    });
+    if (!res.ok) throw new Error(`SharePoint error: ${res.status} ${res.statusText}`);
+    const data = await res.json();
+    allTickets = (data.d && data.d.results) ? data.d.results : [];
+    // Normalize field names
+    allTickets = allTickets.map(r => ({
+      date:        r.DATE || r.Created || '',
+      ticketId:    r.TICKET_x0020_ID || r['TICKET ID'] || '',
+      title:       r.Title || '',
+      employeeMail:r.EMPLOYEE_x0020_MAIL_x0020_ID || '',
+      emailMsgId:  r.EMAIL_x0020_MESSAGE_x0020_ID || '',
+      department:  r.DEPARTMENT || '',
+      modeOfIssue: r.MODE_x0020_OF_x0020_ISSUE || '',
+      hardwareIssue: r.HARDWARE_x0020_ISSUE || '',
+      softwareIssue: r.SOFTWARE_x0020_ISSUE || '',
+      issueDesc:   r.ISSUE_x0020_DESCRIPTION || '',
+      taskOwner:   r.TASK_x0020_OWNER || '',
+      status:      r.STATUS || '',
+      rating:      r.Rating || null
+    }));
+    filteredTickets = [...allTickets];
+    populateFilters();
+    renderAll();
+    showLoading(false);
+  } catch(e) {
+    showLoading(false);
+    showError("❌ Could not load SharePoint data: " + e.message + "<br><small>Make sure CLIENT_ID is set and you have access to the list.</small>");
+  }
+}
+
+// ═══════ FILTERS ═══════
+function populateFilters() {
+  const statuses = [...new Set(allTickets.map(t=>t.status).filter(Boolean))].sort();
+  const depts    = [...new Set(allTickets.map(t=>t.department).filter(Boolean))].sort();
+  const modes    = [...new Set(allTickets.map(t=>t.modeOfIssue).filter(Boolean))].sort();
+  const agents   = [...new Set(allTickets.map(t=>t.taskOwner).filter(Boolean))].sort();
+  fillSelect('f-status', statuses);
+  fillSelect('f-dept', depts);
+  fillSelect('f-mode', modes);
+  fillSelect('f-agent', agents);
+}
+function fillSelect(id, vals) {
+  const sel = document.getElementById(id);
+  const first = sel.options[0];
+  sel.innerHTML = ''; sel.appendChild(first);
+  vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+}
+function applyFilters() {
+  const s = document.getElementById('f-status').value;
+  const d = document.getElementById('f-dept').value;
+  const m = document.getElementById('f-mode').value;
+  const a = document.getElementById('f-agent').value;
+  const q = document.getElementById('f-search').value.toLowerCase();
+  filteredTickets = allTickets.filter(t =>
+    (!s || t.status === s) &&
+    (!d || t.department === d) &&
+    (!m || t.modeOfIssue === m) &&
+    (!a || t.taskOwner === a) &&
+    (!q || t.ticketId.toLowerCase().includes(q) || t.title.toLowerCase().includes(q) || t.employeeMail.toLowerCase().includes(q))
+  );
+  currentPage = 1;
+  renderTicketTable();
+}
+function clearFilters() {
+  ['f-status','f-dept','f-mode','f-agent'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('f-search').value='';
+  filteredTickets = [...allTickets];
+  currentPage = 1;
+  renderTicketTable();
+}
+
+// ═══════ RENDER ALL ═══════
+function renderAll() {
+  renderKPIs();
+  renderLineChart();
+  renderStatusDonut();
+  renderModeBars();
+  renderDeptChart();
+  renderRatingBars();
+  renderTicketTable();
+  renderAgentsPage();
+  renderDepartmentsPage();
+}
+
+// ═══════ KPIs ═══════
+function renderKPIs() {
+  const total = allTickets.length;
+  const openCount = allTickets.filter(t=> /open/i.test(t.status)).length;
+  const closedCount = allTickets.filter(t=> /closed|resolved|complete/i.test(t.status)).length;
+  const inProg = allTickets.filter(t=> /progress|working|assigned/i.test(t.status)).length;
+  document.getElementById('kpi-total').textContent  = total.toLocaleString();
+  document.getElementById('kpi-open').textContent   = openCount.toLocaleString();
+  document.getElementById('kpi-closed').textContent = closedCount.toLocaleString();
+  document.getElementById('kpi-inprog').textContent = inProg.toLocaleString();
+}
+
+// ═══════ LINE CHART ═══════
+function renderLineChart() {
+  const byDate = {};
+  allTickets.forEach(t => {
+    const d = t.date ? t.date.substring(0,10) : 'Unknown';
+    byDate[d] = (byDate[d]||0) + 1;
+  });
+  const sorted = Object.keys(byDate).filter(k=>k!=='Unknown').sort();
+  const last30 = sorted.slice(-30);
+  const vals = last30.map(d=>byDate[d]);
+  destroyChart('lineChart');
+  charts.lineChart = new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: {
+      labels: last30.map(d=>d.substring(5)),
+      datasets: [{ label:'Tickets', data:vals, borderColor:'#E8241A', backgroundColor:'rgba(232,36,26,0.07)', borderWidth:2.5, tension:0.4, fill:true, pointRadius:2, pointBackgroundColor:'#E8241A' }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:'#f5f5f5'}, ticks:{font:{size:10}, maxTicksLimit:10}}, y:{grid:{color:'#f5f5f5'}, ticks:{font:{size:10}}} } }
+  });
+}
+
+// ═══════ STATUS DONUT ═══════
+function renderStatusDonut() {
+  const counts = {};
+  allTickets.forEach(t=>{ const s=t.status||'Unknown'; counts[s]=(counts[s]||0)+1; });
+  const labels = Object.keys(counts);
+  const data   = labels.map(l=>counts[l]);
+  const colors = ['#E8241A','#2980B9','#27AE60','#e67e22','#8e44ad','#7f8c8d','#f39c12','#1abc9c'];
+  const total  = data.reduce((a,b)=>a+b,0);
+  destroyChart('statusDonut');
+  charts.statusDonut = new Chart(document.getElementById('statusDonut'), {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data, backgroundColor:colors.slice(0,labels.length), borderWidth:3, borderColor:'#fff', hoverOffset:6 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'68%', plugins:{legend:{display:false}} }
+  });
+  const leg = document.getElementById('statusLegend');
+  leg.innerHTML = labels.map((l,i)=>`<div class="leg-item"><div class="leg-dot" style="background:${colors[i]||'#ccc'}"></div><span class="leg-lbl">${l}</span><span class="leg-val">${counts[l]}</span><span class="leg-pct">${Math.round(counts[l]/total*100)}%</span></div>`).join('');
+}
+
+// ═══════ MODE BARS ═══════
+function renderModeBars() {
+  const counts = {};
+  allTickets.forEach(t=>{ const m=t.modeOfIssue||'Unknown'; counts[m]=(counts[m]||0)+1; });
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const max = sorted[0]?.[1] || 1;
+  const cols = ['#E8241A','#2980B9','#27AE60','#e67e22','#8e44ad','#7f8c8d'];
+  document.getElementById('modeBars').innerHTML = sorted.map(([l,v],i)=>`
+    <div class="bar-row">
+      <div class="bar-lbl" title="${l}">${l}</div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(v/max*100)}%;background:${cols[i%cols.length]};"></div></div>
+      <div class="bar-num">${v}</div>
+    </div>`).join('');
+}
+
+// ═══════ DEPT CHART ═══════
+function renderDeptChart() {
+  const counts = {};
+  allTickets.forEach(t=>{ const d=t.department||'Unknown'; counts[d]=(counts[d]||0)+1; });
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  destroyChart('deptChart');
+  charts.deptChart = new Chart(document.getElementById('deptChart'), {
+    type:'bar',
+    data:{ labels:sorted.map(s=>s[0]), datasets:[{ data:sorted.map(s=>s[1]), backgroundColor:'#E8241A', borderRadius:4, borderSkipped:false }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:'#f5f5f5'}, ticks:{font:{size:10}}}, y:{grid:{display:false}, ticks:{font:{size:10}}} } }
+  });
+}
+
+// ═══════ RATING BARS ═══════
+function renderRatingBars() {
+  const rated = {};
+  const counts = {};
+  allTickets.forEach(t=>{ if(t.taskOwner && t.rating){ rated[t.taskOwner]=(rated[t.taskOwner]||0)+Number(t.rating); counts[t.taskOwner]=(counts[t.taskOwner]||0)+1; }});
+  const avgs = Object.keys(rated).map(a=>({ name:a, avg:rated[a]/counts[a] })).sort((a,b)=>b.avg-a.avg).slice(0,6);
+  document.getElementById('ratingBars').innerHTML = avgs.length ? avgs.map(a=>`
+    <div class="bar-row">
+      <div class="bar-lbl" title="${a.name}">${a.name.split(' ')[0]}</div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(a.avg/5*100)}%;background:#f39c12;"></div></div>
+      <div class="bar-num">${a.avg.toFixed(1)}</div>
+    </div>`).join('') : '<p style="font-size:12px;color:#888;padding:8px 0;">No ratings yet</p>';
+}
+
+// ═══════ TICKET TABLE ═══════
+function renderTicketTable() {
+  const total = filteredTickets.length;
+  const pages = Math.ceil(total/PAGE_SIZE);
+  const slice = filteredTickets.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+  document.getElementById('ticketCount').textContent = `${total} tickets`;
+  const tbody = document.getElementById('ticketTable');
+  tbody.innerHTML = slice.map(t=>`
+    <tr>
+      <td>${fmtDate(t.date)}</td>
+      <td class="tid">${esc(t.ticketId)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</td>
+      <td style="font-size:11px;">${esc(t.employeeMail)}</td>
+      <td>${esc(t.department)}</td>
+      <td>${modePill(t.modeOfIssue)}</td>
+      <td>${issuePill(t.hardwareIssue, t.softwareIssue)}</td>
+      <td>${esc(t.taskOwner)}</td>
+      <td>${statusPill(t.status)}</td>
+      <td>${starRating(t.rating)}</td>
+    </tr>`).join('') || '<tr><td colspan="10" style="text-align:center;color:#888;padding:20px;">No tickets found</td></tr>';
+  // Pagination
+  const pg = document.getElementById('pagination');
+  if(pages<=1){ pg.innerHTML=''; return; }
+  let html = '';
+  if(currentPage>1) html+=`<button class="pg-btn" onclick="goPage(${currentPage-1})">‹</button>`;
+  for(let i=Math.max(1,currentPage-2);i<=Math.min(pages,currentPage+2);i++)
+    html+=`<button class="pg-btn${i===currentPage?' active':''}" onclick="goPage(${i})">${i}</button>`;
+  if(currentPage<pages) html+=`<button class="pg-btn" onclick="goPage(${currentPage+1})">›</button>`;
+  pg.innerHTML=html;
+}
+function goPage(p){ currentPage=p; renderTicketTable(); }
+
+// ═══════ AGENTS PAGE ═══════
+function renderAgentsPage() {
+  const counts={}, statusMap={}, ratingSum={}, ratingCnt={};
+  allTickets.forEach(t=>{
+    const a=t.taskOwner||'Unassigned';
+    counts[a]=(counts[a]||0)+1;
+    if(!statusMap[a]) statusMap[a]={};
+    const s=t.status||'Unknown';
+    statusMap[a][s]=(statusMap[a][s]||0)+1;
+    if(t.rating){ ratingSum[a]=(ratingSum[a]||0)+Number(t.rating); ratingCnt[a]=(ratingCnt[a]||0)+1; }
+  });
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const max=sorted[0]?.[1]||1;
+  const agentColors=['#E8241A','#2980B9','#27AE60','#e67e22','#8e44ad','#f39c12','#1abc9c','#7f8c8d'];
+  // Agent list
+  document.getElementById('agentList').innerHTML = sorted.map(([a,v],i)=>`
+    <div class="agent-row">
+      <div class="av" style="background:${agentColors[i%agentColors.length]}22;color:${agentColors[i%agentColors.length]}">${initials(a)}</div>
+      <div class="agent-name">${a}</div>
+      <div class="agent-cnt">${v}</div>
+      <div class="agent-bar-wrap"><div class="agent-bar" style="width:${Math.round(v/max*100)}%;background:${agentColors[i%agentColors.length]};"></div></div>
+    </div>`).join('');
+  // Agent chart
+  destroyChart('agentChart');
+  charts.agentChart = new Chart(document.getElementById('agentChart'),{
+    type:'bar',
+    data:{ labels:sorted.map(s=>s[0]), datasets:[{ data:sorted.map(s=>s[1]), backgroundColor:agentColors.slice(0,sorted.length), borderRadius:4, borderSkipped:false }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{font:{size:10},maxRotation:30}}, y:{grid:{color:'#f5f5f5'}, ticks:{font:{size:10}}} } }
+  });
+  // Stacked status by agent
+  const allStatuses=[...new Set(allTickets.map(t=>t.status||'Unknown'))];
+  const sColors=['#E8241A','#2980B9','#27AE60','#e67e22','#8e44ad','#f39c12'];
+  destroyChart('agentStatusChart');
+  charts.agentStatusChart = new Chart(document.getElementById('agentStatusChart'),{
+    type:'bar',
+    data:{
+      labels:sorted.map(s=>s[0]),
+      datasets: allStatuses.map((s,i)=>({ label:s, data:sorted.map(([a])=>(statusMap[a]||{})[s]||0), backgroundColor:sColors[i%sColors.length], borderRadius:2, borderSkipped:false }))
+    },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:true, labels:{font:{size:10},boxWidth:12}}}, scales:{ x:{stacked:true, ticks:{font:{size:9},maxRotation:30}}, y:{stacked:true, grid:{color:'#f5f5f5'}, ticks:{font:{size:10}}} } }
+  });
+  // Agent ratings
+  const ratingAgents=Object.keys(ratingSum).map(a=>({ name:a, avg:ratingSum[a]/ratingCnt[a], cnt:ratingCnt[a] })).sort((a,b)=>b.avg-a.avg);
+  document.getElementById('agentRatingList').innerHTML = ratingAgents.length ? ratingAgents.map(a=>`
+    <div class="agent-row">
+      <div class="av" style="background:#fff3e0;color:#e67e22;">${initials(a.name)}</div>
+      <div class="agent-name">${a.name}</div>
+      <div class="stars">${starRating(a.avg)}</div>
+      <div class="agent-cnt" style="font-size:11px;">${a.avg.toFixed(1)} (${a.cnt})</div>
+    </div>`).join('') : '<p style="font-size:12px;color:#888;padding:8px 0;">No ratings yet</p>';
+}
+
+// ═══════ DEPARTMENTS PAGE ═══════
+function renderDepartmentsPage() {
+  const dMap={};
+  allTickets.forEach(t=>{
+    const d=t.department||'Unknown';
+    if(!dMap[d]) dMap[d]={total:0,open:0,closed:0,inprog:0,hw:0,sw:0,rSum:0,rCnt:0};
+    dMap[d].total++;
+    if(/open/i.test(t.status))                          dMap[d].open++;
+    else if(/closed|resolved|complete/i.test(t.status)) dMap[d].closed++;
+    else if(/progress|working|assigned/i.test(t.status))dMap[d].inprog++;
+    if(t.hardwareIssue) dMap[d].hw++;
+    if(t.softwareIssue) dMap[d].sw++;
+    if(t.rating){ dMap[d].rSum+=Number(t.rating); dMap[d].rCnt++; }
+  });
+  const sorted=Object.entries(dMap).sort((a,b)=>b[1].total-a[1].total);
+  // Dept bar
+  destroyChart('deptBarChart');
+  charts.deptBarChart=new Chart(document.getElementById('deptBarChart'),{
+    type:'bar',
+    data:{ labels:sorted.map(s=>s[0]), datasets:[{data:sorted.map(s=>s[1].total), backgroundColor:'#E8241A', borderRadius:4, borderSkipped:false}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{font:{size:10},maxRotation:30}}, y:{grid:{color:'#f5f5f5'}, ticks:{font:{size:10}}} } }
+  });
+  // HW vs SW
+  destroyChart('hwSwChart');
+  charts.hwSwChart=new Chart(document.getElementById('hwSwChart'),{
+    type:'bar',
+    data:{ labels:sorted.map(s=>s[0]), datasets:[{label:'Hardware',data:sorted.map(s=>s[1].hw),backgroundColor:'#E8241A',borderRadius:2,borderSkipped:false},{label:'Software',data:sorted.map(s=>s[1].sw),backgroundColor:'#2980B9',borderRadius:2,borderSkipped:false}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:true, labels:{font:{size:11},boxWidth:12}}}, scales:{ x:{grid:{display:false}, ticks:{font:{size:10},maxRotation:30}}, y:{grid:{color:'#f5f5f5'}, ticks:{font:{size:10}}} } }
+  });
+  // Dept table
+  document.getElementById('deptTable').innerHTML=sorted.map(([d,v])=>`
+    <tr>
+      <td style="font-weight:600;">${esc(d)}</td>
+      <td><strong>${v.total}</strong></td>
+      <td style="color:#2980B9;">${v.open}</td>
+      <td style="color:#27AE60;">${v.closed}</td>
+      <td style="color:#e67e22;">${v.inprog}</td>
+      <td style="color:#E8241A;">${v.hw}</td>
+      <td style="color:#2980B9;">${v.sw}</td>
+      <td>${v.rCnt?'<span class="stars">'+starRating(v.rSum/v.rCnt)+'</span> '+((v.rSum/v.rCnt).toFixed(1)):'<span class="no-rating">—</span>'}</td>
+    </tr>`).join('');
+}
+
+// ═══════ HELPERS ═══════
+function statusPill(s){
+  if(!s) return '<span class="pill p-default">—</span>';
+  if(/open/i.test(s))    return `<span class="pill p-open">${esc(s)}</span>`;
+  if(/closed|resolved|complete/i.test(s)) return `<span class="pill p-closed">${esc(s)}</span>`;
+  if(/progress|working/i.test(s)) return `<span class="pill p-progress">${esc(s)}</span>`;
+  return `<span class="pill p-default">${esc(s)}</span>`;
+}
+function modePill(m){
+  if(!m) return '—';
+  return `<span class="pill p-default" style="font-size:10px;">${esc(m)}</span>`;
+}
+function issuePill(hw,sw){
+  let out='';
+  if(hw) out+=`<span class="pill p-hardware" style="font-size:10px;">HW</span> `;
+  if(sw) out+=`<span class="pill p-software" style="font-size:10px;">SW</span>`;
+  return out||'—';
+}
+function starRating(r){
+  if(!r) return '<span class="no-rating">—</span>';
+  const n=Math.round(Number(r));
+  return '<span class="stars">'+'★'.repeat(Math.min(n,5))+'☆'.repeat(Math.max(0,5-n))+'</span>';
+}
+function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}); }catch{return d;} }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function initials(s){ return String(s||'?').split(' ').map(w=>w[0]||'').slice(0,2).join('').toUpperCase(); }
+function destroyChart(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+function showLoading(v){
+  document.getElementById('loadingMsg').style.display=v?'block':'none';
+  const bar=document.getElementById('loadingBar');
+  bar.style.width=v?'75%':'100%';
+  if(!v) setTimeout(()=>bar.style.width='0%',400);
+}
+function showError(msg){ const e=document.getElementById('errorBox'); e.innerHTML=msg; e.style.display='block'; }
+function hideError(){ document.getElementById('errorBox').style.display='none'; }
+
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  el.classList.add('active');
+}
+
+// ═══════ SETUP INSTRUCTIONS CHECK ═══════
+window.onload = function(){
+  if(CLIENT_ID === "YOUR_AZURE_APP_CLIENT_ID"){
+    document.getElementById('loginScreen').innerHTML = `
+      <div style="max-width:560px;margin:40px auto;padding:32px;background:#fff;border-radius:16px;border-top:5px solid #E8241A;box-shadow:0 4px 24px rgba(0,0,0,0.1);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+          <div style="width:42px;height:42px;background:#E8241A;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;font-style:italic;">k</div>
+          <div style="font-size:20px;font-weight:800;color:#E8241A;">kondaas IT Dashboard</div>
+        </div>
+        <div style="background:#fdecea;border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:#922b21;">
+          ⚠️ <strong>One-time setup required:</strong> Azure App Client ID not configured yet.
+        </div>
+        <div style="font-size:13px;color:#333;line-height:1.8;">
+          <strong>Step 1 —</strong> Go to <a href="https://portal.azure.com" target="_blank" style="color:#E8241A;">portal.azure.com</a><br>
+          <strong>Step 2 —</strong> Azure Active Directory → App Registrations → New Registration<br>
+          &nbsp;&nbsp;&nbsp;• Name: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">Kondaas IT Dashboard</code><br>
+          &nbsp;&nbsp;&nbsp;• Redirect URI (SPA): <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;word-break:break-all;">${window.location.href}</code><br>
+          <strong>Step 3 —</strong> API Permissions → Add → SharePoint → <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">AllSites.Read</code> → Grant Admin Consent<br>
+          <strong>Step 4 —</strong> Copy <strong>Application (client) ID</strong><br>
+          <strong>Step 5 —</strong> Open this HTML file, find <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">YOUR_AZURE_APP_CLIENT_ID</code> and replace it<br>
+          <strong>Step 6 —</strong> Reload — Done! ✅
+        </div>
+      </div>`;
+  }
+};
+</script>
+</body>
+</html>
