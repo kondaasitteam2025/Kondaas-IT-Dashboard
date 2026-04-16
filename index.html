@@ -6,7 +6,7 @@
 <title>Kondaas — IT Helpdesk Dashboard</title>
 
 <!-- MSAL.js for Microsoft 365 Login -->
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
@@ -215,7 +215,7 @@
     </div>
     <div class="login-title">IT Helpdesk Command Center</div>
     <div class="login-sub">Sign in with your Kondaas Microsoft 365 account to access live SharePoint ticket data.</div>
-    <button class="login-btn" onclick="signIn()">
+    <button class="login-btn" id="loginBtn" onclick="handleSignIn()">
       <svg viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
         <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
@@ -223,6 +223,11 @@
       Sign in with Microsoft
     </button>
     <div class="login-note">Uses your existing Microsoft 365 / SharePoint account. No separate password needed.</div>
+    <div style="margin-top:14px;background:#eaf4fb;border-radius:8px;padding:11px 13px;font-size:11px;color:#1a5276;text-align:left;line-height:1.7;">
+      ⚙️ <strong>Azure Portal one-time fix needed:</strong><br>
+      Authentication → Redirect URIs → Change platform type from <b>Web</b> to <b>SPA</b><br>
+      URL: <code style="background:#d6eaf8;padding:1px 5px;border-radius:3px;font-size:10px;">https://kondaasitteam2025.github.io/Kondaas-IT-Dashboard/</code>
+    </div>
   </div>
 </div>
 
@@ -372,21 +377,11 @@
 
 <script>
 // ═══════════════════════════════════════════════════════
-// CONFIG — Update these if your Azure App Registration changes
+// CONFIG
 // ═══════════════════════════════════════════════════════
-const TENANT_ID   = "common"; // or your tenant ID
-const CLIENT_ID   = "2c0893fb-ad23-4d7a-bde5-c089cb6ecd10";
-const SITE_URL    = "https://kondaasautomation.sharepoint.com/sites/ITHELPDESK-KONDAAS2";
-const LIST_NAME   = "Tickets";
-const REDIRECT_URI = window.location.href.split('?')[0];
-
-// MSAL Config
-const msalConfig = {
-  auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}`, redirectUri: REDIRECT_URI },
-  cache: { cacheLocation: "sessionStorage" }
-};
-const msalInstance = new msal.PublicClientApplication(msalConfig);
-const loginRequest = { scopes: ["https://kondaasautomation.sharepoint.com/.default"] };
+const CLIENT_ID = "2c0893fb-ad23-4d7a-bde5-c089cb6ecd10";
+const SITE_URL  = "https://kondaasautomation.sharepoint.com/sites/ITHELPDESK-KONDAAS2";
+const LIST_NAME = "Tickets";
 
 // ═══════ STATE ═══════
 let allTickets = [];
@@ -394,35 +389,110 @@ let filteredTickets = [];
 let currentPage = 1;
 const PAGE_SIZE = 15;
 let charts = {};
+let msalInstance = null;
+let loginRequest = null;
 
-// ═══════ AUTH ═══════
+// ═══════ INIT MSAL ═══════
+async function initMsal() {
+  const redirectUri = "https://kondaasitteam2025.github.io/Kondaas-IT-Dashboard/";
+  const msalConfig = {
+    auth: {
+      clientId: CLIENT_ID,
+      authority: "https://login.microsoftonline.com/common",
+      redirectUri: redirectUri
+    },
+    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
+  };
+  msalInstance = new msal.PublicClientApplication(msalConfig);
+  await msalInstance.initialize();
+  loginRequest = {
+    scopes: ["https://kondaasautomation.sharepoint.com/AllSites.Read", "User.Read"]
+  };
+}
+
+// ═══════ AUTH — POPUP (works on GitHub Pages direct open) ═══════
 async function signIn() {
   try {
+    showLoginError("", false);
     const resp = await msalInstance.loginPopup(loginRequest);
     msalInstance.setActiveAccount(resp.account);
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
-    document.getElementById('userDisplay').textContent = resp.account.name || resp.account.username;
-    await loadData();
+    showDashboard(resp.account);
   } catch(e) {
-    showError("Login failed: " + e.message);
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('dashboard').style.display = 'none';
+    if (e.errorCode === "popup_window_error" || e.message.includes("popup")) {
+      // Popup blocked — fallback to redirect
+      try {
+        await msalInstance.loginRedirect(loginRequest);
+      } catch(e2) {
+        showLoginError("Login failed: " + e2.message);
+      }
+    } else if (e.errorCode !== "user_cancelled") {
+      showLoginError("Login failed: " + e.message + "<br><small>Make sure Redirect URI is set as <b>SPA</b> (not Web) in Azure Portal.</small>");
+    }
   }
 }
 
-function signOut() {
-  msalInstance.logoutPopup().then(() => {
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('dashboard').style.display = 'none';
-  });
+async function signOut() {
+  try {
+    localStorage.clear();
+    await msalInstance.logoutPopup();
+  } catch {
+    await msalInstance.logoutRedirect({ postLogoutRedirectUri: "https://kondaasitteam2025.github.io/Kondaas-IT-Dashboard/" });
+  }
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+}
+
+function showDashboard(account) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('userDisplay').textContent = account.name || account.username;
+  loadData();
 }
 
 async function getToken() {
-  const account = msalInstance.getActiveAccount();
-  if (!account) throw new Error("No active account");
-  const resp = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
-  return resp.accessToken;
+  const accounts = msalInstance.getAllAccounts();
+  if (!accounts.length) throw new Error("Session expired — please sign in again.");
+  try {
+    const resp = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
+    return resp.accessToken;
+  } catch {
+    const resp = await msalInstance.acquireTokenPopup({ ...loginRequest, account: accounts[0] });
+    return resp.accessToken;
+  }
+}
+
+// ═══════ BOOT — HANDLE REDIRECT RETURN ═══════
+async function handleRedirectAndInit() {
+  await initMsal();
+  try {
+    // Handle return from loginRedirect
+    const resp = await msalInstance.handleRedirectPromise();
+    if (resp && resp.account) {
+      msalInstance.setActiveAccount(resp.account);
+      showDashboard(resp.account);
+      return;
+    }
+  } catch(e) {
+    showLoginError("Redirect error: " + e.message);
+  }
+  // Check if already signed in (cached session)
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+    showDashboard(accounts[0]);
+  }
+}
+
+function showLoginError(msg, show=true) {
+  let el = document.getElementById('loginError');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loginError';
+    el.style.cssText = 'background:#fdecea;border-radius:8px;padding:12px 14px;font-size:12px;color:#922b21;margin-top:14px;text-align:left;line-height:1.6;';
+    document.querySelector('.login-card').appendChild(el);
+  }
+  el.style.display = show ? 'block' : 'none';
+  if (show) el.innerHTML = '⚠️ ' + msg;
 }
 
 // ═══════ LOAD DATA FROM SHAREPOINT ═══════
@@ -781,30 +851,18 @@ function showPage(id, el) {
   el.classList.add('active');
 }
 
-// ═══════ SETUP INSTRUCTIONS CHECK ═══════
-window.onload = function(){
-  if(CLIENT_ID === "YOUR_AZURE_APP_CLIENT_ID"){
-    document.getElementById('loginScreen').innerHTML = `
-      <div style="max-width:560px;margin:40px auto;padding:32px;background:#fff;border-radius:16px;border-top:5px solid #E8241A;box-shadow:0 4px 24px rgba(0,0,0,0.1);">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
-          <div style="width:42px;height:42px;background:#E8241A;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;font-style:italic;">k</div>
-          <div style="font-size:20px;font-weight:800;color:#E8241A;">kondaas IT Dashboard</div>
-        </div>
-        <div style="background:#fdecea;border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:#922b21;">
-          ⚠️ <strong>One-time setup required:</strong> Azure App Client ID not configured yet.
-        </div>
-        <div style="font-size:13px;color:#333;line-height:1.8;">
-          <strong>Step 1 —</strong> Go to <a href="https://portal.azure.com" target="_blank" style="color:#E8241A;">portal.azure.com</a><br>
-          <strong>Step 2 —</strong> Azure Active Directory → App Registrations → New Registration<br>
-          &nbsp;&nbsp;&nbsp;• Name: <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">Kondaas IT Dashboard</code><br>
-          &nbsp;&nbsp;&nbsp;• Redirect URI (SPA): <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;word-break:break-all;">${window.location.href}</code><br>
-          <strong>Step 3 —</strong> API Permissions → Add → SharePoint → <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">AllSites.Read</code> → Grant Admin Consent<br>
-          <strong>Step 4 —</strong> Copy <strong>Application (client) ID</strong><br>
-          <strong>Step 5 —</strong> Open this HTML file, find <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">YOUR_AZURE_APP_CLIENT_ID</code> and replace it<br>
-          <strong>Step 6 —</strong> Reload — Done! ✅
-        </div>
-      </div>`;
-  }
+// ═══════ BOOT ═══════
+async function handleSignIn() {
+  const btn = document.getElementById('loginBtn');
+  btn.innerHTML = '⏳ Signing in...';
+  btn.disabled = true;
+  await signIn();
+  btn.innerHTML = `<svg viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg> Sign in with Microsoft`;
+  btn.disabled = false;
+}
+
+window.onload = function() {
+  handleRedirectAndInit();
 };
 </script>
 </body>
