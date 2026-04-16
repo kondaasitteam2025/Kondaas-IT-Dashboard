@@ -406,7 +406,7 @@ async function initMsal() {
   msalInstance = new msal.PublicClientApplication(msalConfig);
   await msalInstance.initialize();
   loginRequest = {
-    scopes: ["https://kondaasautomation.sharepoint.com/.default"]
+    scopes: ["Sites.Read.All"]
   };
 }
 
