@@ -501,7 +501,7 @@ async function loadData() {
   hideError();
   try {
     const token = await getToken();
-    const url = `${SITE_URL}/_api/web/lists/getbytitle('${LIST_NAME}')/items?$top=10&$select=Id,Title,Created`;
+    const url = `${SITE_URL}/_api/web/lists/getbytitle('${LIST_NAME}')/items?$top=5000&$select=Id,Title,Created`;
     const res = await fetch(url, {
       headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json;odata=verbose' }
     });
